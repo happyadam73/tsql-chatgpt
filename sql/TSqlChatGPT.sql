@@ -18,6 +18,7 @@
 --/ Provide your API key for OpenAI service (this is for OpenAI, not Azure OpenAI service)
 --/ And also the subscription key for the Azure API Manager API
 --/ The APIM URL Paramater needs to match the API Manager Service URL (e.g. https://<your APIM resource>.azure-api.net)
+--/ Do a find/replace on <your APIM resource> and replace with the name of your APIM Service (this will then update the default parameters for the stored procs)
 --/
 --/ Usage Examples:
 --/ 

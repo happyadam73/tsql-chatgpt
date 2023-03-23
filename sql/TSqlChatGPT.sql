@@ -5,7 +5,7 @@
 --/ Author:				Adam Buckley, Microsoft
 --/ Creation Date:		March 2023
 --/	
---/ Revision History:	1.0
+--/ Revision History:	1.1 (Generate Test Data proc added)
 --/	
 --/ 
 --/ DISCLAIMER: 
@@ -28,6 +28,8 @@
 --/
 --/		EXEC [dbo].[usp_ExplainObject] 'dbo.uspLogError';
 --/		EXEC [dbo].[usp_ExplainObject] '[SalesLT].[vProductAndDescription]';
+--/
+--/		EXEC [dbo].[usp_GenerateTestDataForTable] '[SalesLT].[Address]'
 --/
 
 DECLARE @openai_api_key			NVARCHAR(255) = 'sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXX',
@@ -162,6 +164,86 @@ BEGIN
 
 	-- Generate message for ChatGPT
 	SET @message = N'Explain this code:\n' + @object_definition
+
+	-- Now Call the ChatGPT proc
+	EXEC [dbo].[usp_AskChatGPT] 
+	   @message			= @message
+	  ,@response		= @response OUTPUT
+	  ,@apim_url		= @apim_url
+	  ,@timeout			= @timeout
+	  ,@print_response	= @print_response;
+
+END;
+GO
+
+-- Drop/Create Proc to generate a CREATE TABLE script based on the object name - this will include whether the column
+-- is an identity column.  We need this CREATE TABLE script to help prompt ChatGPT for generating test data
+IF EXISTS (SELECT * FROM sys.objects WHERE type = 'P' AND OBJECT_ID = OBJECT_ID('dbo.usp_Generate_Create_Table_Sql'))
+    DROP PROCEDURE [dbo].[usp_Generate_Create_Table_Sql];
+GO
+
+CREATE PROCEDURE [dbo].[usp_Generate_Create_Table_Sql]
+	@object_name		NVARCHAR(512),
+	@create_table_sql	NVARCHAR(MAX)   = NULL OUTPUT
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+	DECLARE @schema_name SYSNAME,
+			@table_name SYSNAME,
+			@columns_sql NVARCHAR(MAX);
+
+	SELECT @schema_name = PARSENAME(@object_name, 2), @table_name = PARSENAME(@object_name, 1);
+
+	SELECT @columns_sql = STRING_AGG(
+	  '[' + c.name + '] ' + 
+	  t.name + ' ' + 
+	  CASE WHEN c.is_nullable = 1 THEN 'NULL' ELSE 'NOT NULL' END +
+	  CASE WHEN c.is_identity = 1 THEN ' IDENTITY(1,1)' ELSE '' END
+	  ,',') 
+	FROM 
+		sys.tables AS t
+		INNER JOIN sys.columns AS c 
+			ON t.object_id = c.object_id
+	WHERE 
+		t.name = @table_name AND 
+		SCHEMA_NAME(t.schema_id) = @schema_name
+	GROUP BY t.object_id;
+
+	SET @create_table_sql = 'CREATE TABLE [' + @schema_name + '].[' + @table_name + '] (' + @columns_sql + ')';
+
+END;
+GO
+
+-- Drop/Create Proc to send request to ChatGPT API to generate test data inserts for a specified table
+IF EXISTS (SELECT * FROM sys.objects WHERE type = 'P' AND OBJECT_ID = OBJECT_ID('dbo.usp_GenerateTestDataForTable'))
+    DROP PROCEDURE [dbo].[usp_GenerateTestDataForTable];
+GO
+
+CREATE PROCEDURE [dbo].[usp_GenerateTestDataForTable]
+	@object			NVARCHAR(512),
+	@response		NVARCHAR(MAX)   = NULL OUTPUT,
+	@apim_url		NVARCHAR(255)	= N'https://<your APIM resource name>.azure-api.net',
+	@timeout		INT				= 180,  -- longer default timeout for test data generation
+	@num_records	INT				= 10,
+	@print_response	BIT				= 1
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+	DECLARE @create_table_sql	NVARCHAR(MAX),
+			@message			NVARCHAR(MAX);
+
+	-- Get CREATE TABLE script
+	EXEC [dbo].[usp_Generate_Create_Table_Sql] 
+	   @object_name = @object
+	  ,@create_table_sql = @create_table_sql OUTPUT;
+
+	-- Cleanup up script so it's single line and compliant for message request
+	SET @create_table_sql = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(@create_table_sql, N'"', N'\"'), N'''', N''''''), CHAR(9), N'\t'), CHAR(10), N'\n'), CHAR(13), N'\r')
+
+	-- Generate message for ChatGPT
+	SET @message = N'Generate a single SQL INSERT statement with ' + CAST(@num_records AS VARCHAR(10)) + ' test data records based on the following table script: ' + @create_table_sql;
 
 	-- Now Call the ChatGPT proc
 	EXEC [dbo].[usp_AskChatGPT] 

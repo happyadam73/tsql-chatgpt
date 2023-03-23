@@ -103,5 +103,5 @@ EXEC [dbo].[usp_GenerateUnitTestForObject] 'dbo.ufnGetSalesOrderStatusText';
 ```sql
 EXEC [dbo].[usp_DescribeTableColumns] 'SalesLT.SalesOrderDetail';
 
-EXEC [dbo].[usp_DescribeTableColumns] '[SalesLT].[vProductAndDescription]';
+EXEC [dbo].[usp_DescribeTableColumns] '[SalesLT].[Address]';
 ```

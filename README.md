@@ -1,10 +1,16 @@
-# Step-by-step guide to deploying TSqlChatGPT
+# Step-by-Step Guide to Deploying TSqlChatGPT
 
 > ChatGPT integration relies on `sp_invoke_external_rest_endpoint` which is currently only available for Azure SQL Database (Public Preview)
 
+> **Note**
+> Expected costs for running this demonstration are around $2.30/day:
+> - Azure SQL Database (Standard S0): ~ $20/month
+> - Azure API Management (Developer SKU): ~ $50/month
+
+
 ## Pre-requisites
 
-- You will need to sign up for OpenAI in order to generate the required API key: https://platform.openai.com/signup.  Once registered, select "View API Keys" from the Account menu and create a new secret key.  Keep a copy somewhere safe (don't share) - you will need to use this in the provided SQL script.
+- If you haven't done so already, you will need to sign up for a free OpenAI account in order to generate the required API key: https://platform.openai.com/signup.  Once registered, select "View API Keys" from the Account menu and create a new secret key.  Keep a copy somewhere safe (don't share) - you will need to use this in the provided SQL script.
 - You will also need an Azure SQL Database to run the SQL script and to test the ChatGPT integration.  If you don't already have an existing Azure SQL DB or you wish to create a sample Database for this exercise, then follow the optional step below and click on the "Deploy to Azure" button.
 
 ### OPTIONAL: Deploy the AdventureWorksLT Sample Database
@@ -53,10 +59,14 @@ The SQL Script should look similar to the screenshot below - once you've pasted 
 
 ## 4. How to use TSqlChatGPT
 
-Currently there are 3 stored procedures to try:
+Currently there are 4 stored procedures to try:
 - `dbo.usp_AskChatGPT` - send any message to ChatGPT and get a response (remember ChatGPT does not have any context with regards to your database objects)
 - `dbo.usp_ExplainObject` - sends the object definition of any function/procedure/view and returns an explanation of the code (or view)
 - `dbo.usp_GenerateTestDataForTable` - sends ChatGPT a CREATE table script based on the table you specify, and asks for an INSERT statement to be generated with test data records
+- `dbo.usp_GenerateUnitTestForObject` - sends the object definition of any function/procedure/view and generates a tSQLt Unit Test Stored Procedure for testing the object
+
+> **Warning**
+> It is recommended to avoid use of these procedures on production systems, or any database containing sensitive or private data.  In the case of the last 3 procedures, the definition of your tables or code for your objects is sent to the OpenAI API (via your API Management Instance).  Only Code and table schemas are sent to ChatGPT - no data is ever sent to ChatGPT.
 
 ### `dbo.usp_AskChatGPT` Examples
 ```sql
@@ -81,6 +91,9 @@ EXEC [dbo].[usp_GenerateTestDataForTable] 'SalesLT.ProductCategory';
 EXEC [dbo].[usp_GenerateTestDataForTable] '[SalesLT].[Address]';
 ```
 
-> **Warning**
-> It is recommended to avoid use of these procedures on production systems, or any database containing sensitive or private data.  In the case of the last 2 procedures, the definition of your tables or code for your objects is sent to the OpenAI API (via your API Management Instance).
+### `dbo.usp_GenerateUnitTestForObject` Examples
+```sql
+EXEC [dbo].[usp_GenerateUnitTestForObject] 'dbo.uspLogError';
 
+EXEC [dbo].[usp_GenerateUnitTestForObject] 'dbo.ufnGetSalesOrderStatusText';
+```

@@ -1,0 +1,121 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.15.31.15270",
+      "templateHash": "4204839902991743010"
+    }
+  },
+  "parameters": {
+    "apiManagementServiceName": {
+      "type": "string",
+      "defaultValue": "[format('apiservice{0}', uniqueString(resourceGroup().id))]",
+      "metadata": {
+        "description": "The name of the API Management service instance"
+      }
+    },
+    "publisherEmail": {
+      "type": "string",
+      "minLength": 1,
+      "metadata": {
+        "description": "The email address of the owner of the service"
+      }
+    },
+    "publisherName": {
+      "type": "string",
+      "minLength": 1,
+      "metadata": {
+        "description": "The name of the owner of the service"
+      }
+    },
+    "sku": {
+      "type": "string",
+      "defaultValue": "Developer",
+      "allowedValues": [
+        "Developer",
+        "Standard",
+        "Premium"
+      ],
+      "metadata": {
+        "description": "The pricing tier of this API Management service"
+      }
+    },
+    "skuCount": {
+      "type": "int",
+      "defaultValue": 1,
+      "allowedValues": [
+        1,
+        2
+      ],
+      "metadata": {
+        "description": "The instance size of this API Management service."
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Location for all resources."
+      }
+    },
+    "apiName": {
+      "type": "string",
+      "defaultValue": "OpenAI",
+      "metadata": {
+        "description": "Name of the OpenAI API"
+      }
+    },
+    "openApiUrl": {
+      "type": "string",
+      "defaultValue": "https://raw.githubusercontent.com/happyadam73/tsql-chatgpt/main/openapi.yaml",
+      "metadata": {
+        "description": "URL for OpenAPI YAML definition of the OpenAI API"
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.ApiManagement/service",
+      "apiVersion": "2021-08-01",
+      "name": "[parameters('apiManagementServiceName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "[parameters('sku')]",
+        "capacity": "[parameters('skuCount')]"
+      },
+      "properties": {
+        "publisherEmail": "[parameters('publisherEmail')]",
+        "publisherName": "[parameters('publisherName')]"
+      }
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apis",
+      "apiVersion": "2022-08-01",
+      "name": "[format('{0}/{1}', parameters('apiManagementServiceName'), parameters('apiName'))]",
+      "properties": {
+        "format": "openapi-link",
+        "value": "[parameters('openApiUrl')]",
+        "path": ""
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service', parameters('apiManagementServiceName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/subscriptions",
+      "apiVersion": "2022-08-01",
+      "name": "[format('{0}/{1}', parameters('apiManagementServiceName'), 'OpenAISubscription')]",
+      "properties": {
+        "displayName": "OpenAI API subscription",
+        "state": "active",
+        "scope": "[format('/apis/{0}', parameters('apiName'))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service', parameters('apiManagementServiceName'))]",
+        "[resourceId('Microsoft.ApiManagement/service/apis', parameters('apiManagementServiceName'), parameters('apiName'))]"
+      ]
+    }
+  ]
+}

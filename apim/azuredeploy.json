@@ -69,7 +69,7 @@
     },
     "openApiUrl": {
       "type": "string",
-      "defaultValue": "https://raw.githubusercontent.com/happyadam73/tsql-chatgpt/main/openapi.yaml",
+      "defaultValue": "https://raw.githubusercontent.com/happyadam73/tsql-chatgpt/main/apim/openapi.yaml",
       "metadata": {
         "description": "URL for OpenAPI YAML definition of the OpenAI API"
       }

@@ -5,7 +5,7 @@
 --/ Author:				Adam Buckley, Microsoft
 --/ Creation Date:		March 2023
 --/	
---/ Revision History:	1.1 (Generate Test Data proc added)
+--/ Revision History:	1.2 (Generate tSQLt Unit Test proc added)
 --/	
 --/ 
 --/ DISCLAIMER: 
@@ -30,6 +30,8 @@
 --/		EXEC [dbo].[usp_ExplainObject] '[SalesLT].[vProductAndDescription]';
 --/
 --/		EXEC [dbo].[usp_GenerateTestDataForTable] '[SalesLT].[Address]'
+--/
+--/		EXEC [dbo].[usp_GenerateUnitTestForObject] 'dbo.ufnGetSalesOrderStatusText';
 --/
 
 DECLARE @openai_api_key			NVARCHAR(255) = 'sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXX',
@@ -244,6 +246,46 @@ BEGIN
 
 	-- Generate message for ChatGPT
 	SET @message = N'Generate a single SQL INSERT statement with ' + CAST(@num_records AS VARCHAR(10)) + ' test data records based on the following table script: ' + @create_table_sql;
+
+	-- Now Call the ChatGPT proc
+	EXEC [dbo].[usp_AskChatGPT] 
+	   @message			= @message
+	  ,@response		= @response OUTPUT
+	  ,@apim_url		= @apim_url
+	  ,@timeout			= @timeout
+	  ,@print_response	= @print_response;
+
+END;
+GO
+
+-- Drop/Create Proc to send request to ChatGPT API to generate a tSQLt Unit Test Proc for a specified function/proc/view within this database
+IF EXISTS (SELECT * FROM sys.objects WHERE type = 'P' AND OBJECT_ID = OBJECT_ID('dbo.usp_GenerateUnitTestForObject'))
+    DROP PROCEDURE [dbo].[usp_GenerateUnitTestForObject];
+GO
+
+CREATE PROCEDURE [dbo].[usp_GenerateUnitTestForObject]
+	@object			NVARCHAR(512),
+	@response		NVARCHAR(MAX)   = NULL OUTPUT,
+	@apim_url		NVARCHAR(255)	= N'https://<your APIM resource name>.azure-api.net',
+	@timeout		INT				= 90,
+	@print_response	BIT				= 1
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+	DECLARE @object_definition	NVARCHAR(MAX),
+			@message			NVARCHAR(MAX);
+
+	-- Get Object definition
+    SELECT @object_definition = [definition]
+    FROM sys.sql_modules
+    WHERE object_id = OBJECT_ID(@object);
+
+	-- Cleanup up object definition so it's single line and compliant for message request
+	SET @object_definition = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(@object_definition, N'"', N'\"'), N'''', N''''''), CHAR(9), N'\t'), CHAR(10), N'\n'), CHAR(13), N'\r')
+
+	-- Generate message for ChatGPT
+	SET @message = N'Write a tSQLt Unit test stored procedure for the following:\n' + @object_definition
 
 	-- Now Call the ChatGPT proc
 	EXEC [dbo].[usp_AskChatGPT] 

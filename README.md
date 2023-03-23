@@ -59,14 +59,15 @@ The SQL Script should look similar to the screenshot below - once you've pasted 
 
 ## 4. How to use TSqlChatGPT
 
-Currently there are 4 stored procedures to try:
+Currently there are 5 stored procedures to try:
 - `dbo.usp_AskChatGPT` - send any message to ChatGPT and get a response (remember ChatGPT does not have any context with regards to your database objects)
 - `dbo.usp_ExplainObject` - sends the object definition of any function/procedure/view and returns an explanation of the code (or view)
 - `dbo.usp_GenerateTestDataForTable` - sends ChatGPT a CREATE table script based on the table you specify, and asks for an INSERT statement to be generated with test data records
 - `dbo.usp_GenerateUnitTestForObject` - sends the object definition of any function/procedure/view and generates a tSQLt Unit Test Stored Procedure for testing the object
+- `dbo.usp_DescribeTableColumns` - sends ChatGPT a CREATE table script based on the table you specify, and asks for a description of each column
 
 > **Warning**
-> It is recommended to avoid use of these procedures on production systems, or any database containing sensitive or private data.  In the case of the last 3 procedures, the definition of your tables or code for your objects is sent to the OpenAI API (via your API Management Instance).  Only Code and table schemas are sent to ChatGPT - no data is ever sent to ChatGPT.
+> It is recommended to avoid use of these procedures on production systems, or any database containing sensitive or private data.  In the case of the last 4 procedures, the definition of your tables or code for your objects is sent to the OpenAI API (via your API Management Instance).  Only Code and table schemas are sent to ChatGPT - no data is ever sent to ChatGPT.
 
 ### `dbo.usp_AskChatGPT` Examples
 ```sql
@@ -96,4 +97,11 @@ EXEC [dbo].[usp_GenerateTestDataForTable] '[SalesLT].[Address]';
 EXEC [dbo].[usp_GenerateUnitTestForObject] 'dbo.uspLogError';
 
 EXEC [dbo].[usp_GenerateUnitTestForObject] 'dbo.ufnGetSalesOrderStatusText';
+```
+
+### `dbo.usp_DescribeTableColumns` Examples
+```sql
+EXEC [dbo].[usp_DescribeTableColumns] 'SalesLT.SalesOrderDetail';
+
+EXEC [dbo].[usp_DescribeTableColumns] '[SalesLT].[vProductAndDescription]';
 ```

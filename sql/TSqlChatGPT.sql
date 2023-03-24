@@ -340,3 +340,71 @@ BEGIN
 
 END;
 GO
+
+-- Drop/Create Proc to send request to ChatGPT API to generate a tSQLt Unit Test Proc for a specified function/proc/view within this database
+IF EXISTS (SELECT * FROM sys.objects WHERE type = 'P' AND OBJECT_ID = OBJECT_ID('dbo.usp_ExplainAllStoredProcsInDB'))
+    DROP PROCEDURE [dbo].[usp_ExplainAllStoredProcsInDB];
+GO
+
+/* Explained by ChatGPT3
+This is a stored procedure in SQL Server named usp_ExplainAllStoredProcsInDB that retrieves the definitions of all stored procedures in the database and excludes certain procedures.
+The stored procedure declares several variables, including @ProcName to hold the name of each stored procedure, @ProcDef to hold the definition of each stored procedure, and @ProcGPT to hold the definition of each stored procedure annotated by ChatGPT.
+The stored procedure opens a cursor named procCursor to loop through each stored procedure's name and definition. Inside the loop, it checks whether the stored procedure definition is already annotated by ChatGPT using the LIKE operator, which returns a TRUE value if the string being searched for exists in the @ProcDef variable.
+If the stored procedure definition is not already annotated by ChatGPT, the stored procedure calls another stored procedure named usp_ExplainObject to generate the annotated definition in the @ProcGPT variable. Then, the stored procedure updates the definition by adding the ChatGPT annotation to the beginning and end of the @ProcGPT variable and replaces "CREATE PROCEDURE" with "ALTER PROCEDURE" to create an update statement instead.
+The stored procedure then checks whether the @UpdateProcedures parameter is set to 1 (true), which means it will automatically update the stored procedures with the annotated definition. If it is set to 0 (false), the stored procedure will just return the annotated definition along with the original definition.
+If the stored procedure definition is already annotated by ChatGPT, it skips it and moves to the next stored procedure.
+Finally, the stored procedure returns a list of stored procedures with their original definition and either the updated or annotated definition, depending on whether the @UpdateProcedures parameter is set to 1 or 0.
+*/
+
+CREATE PROCEDURE [dbo].[usp_ExplainAllStoredProcsInDB]
+
+	@UpdateProcedures bit = 1 -- Switch to automatically update stored procedures
+
+AS
+
+DECLARE @ProcName	nvarchar(max);
+DECLARE @ProcDef	nvarchar(max);
+DECLARE @ProcGPT	nvarchar(max);
+DECLARE @ProcSuffix	varchar(3) = 'gpt';
+
+-- Get all stored procedures and exclude chatgpt code
+DECLARE procCursor CURSOR FOR
+	select name, object_definition(object_id) from sys.objects
+	where type = 'P'
+	and name not in ('usp_Generate_Create_Table_Sql', 'usp_AskChatGPT', 'usp_ExplainObject', 
+	'usp_PrintMax', 'usp_GenerateTestDataForTable', 'usp_GenerateUnitTestForObject', 'usp_DescribeTableColumns');
+
+OPEN procCursor;
+
+FETCH NEXT FROM procCursor INTO @ProcName, @ProcDef;
+WHILE @@FETCH_STATUS = 0
+BEGIN
+
+	IF NOT LEFT(@ProcDef , LEN('/* Explained by ChatGPT3')) LIKE '/* Explained by ChatGPT3'
+	BEGIN
+		EXEC [dbo].[usp_ExplainObject] @object = @ProcName, @response = @ProcGPT OUTPUT;
+		SELECT @ProcGPT = '/* Explained by ChatGPT3' + CHAR(13) + @ProcGPT + CHAR(13) + '*/' + REPLACE(@ProcDef, 'CREATE PROCEDURE', 'ALTER PROCEDURE')
+		
+		IF @UpdateProcedures = 1  
+		BEGIN
+			EXEC sp_executeSQL @ProcGPT;
+			SELECT 'Stored Procedure Altered : ' + @ProcName as Status, @ProcDef as Original, @ProcGPT as Updatedto;
+		END;
+		ELSE
+		BEGIN
+			SELECT 'Stored Procedure Explain: ' + @ProcName as Status, @ProcDef as Original, @ProcGPT as WithExplain;
+		END;
+	END;
+	ELSE
+	BEGIN
+			SELECT 'Stored Procedure skipped (already explained): ' + @ProcName as Status, @ProcDef as Original, @ProcDef as WithExplain;
+		
+	END;
+
+    FETCH NEXT FROM procCursor INTO @procName, @procDef;
+END;
+CLOSE procCursor;
+DEALLOCATE procCursor;
+GO;
+
+

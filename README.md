@@ -43,15 +43,15 @@ Make a note of this subscription key somewhere safe (do not share) - you will ne
 
 ## 3. Run the TSqlChatGPT SQL Script
 
-> It is recommended to use SQL Management Studio to run the ChatGPT SQL commands - most responses will be displayed in the Messages tab and this may not work correctly in other client applications (such as the Query Preview feature in the Azure Portal)
+> Use either [SQL Management Studio](https://learn.microsoft.com/en-us/sql/ssms/download-sql-server-management-studio-ssms) or [Azure Data Studio](https://learn.microsoft.com/en-us/sql/azure-data-studio/download-azure-data-studio) to run the ChatGPT SQL commands - most responses will be displayed in the Messages tab and this may not work correctly in other client applications (such as the Query Preview feature in the Azure Portal)
 
-Open SSMS and connect to your Azure SQL Database - either download and open the TSqlChatGPT.sql file (from the sql folder) or copy the contents to a new query window.
+Open SSMS or Azure Data Studio and connect to your Azure SQL Database - either download and open the TSqlChatGPT.sql file (from the sql folder) or copy the contents to a new query window.
 
 At the top of the script, replace the following:
 
 - Paste your OpenAI API Key in the `@openai_api_key` variable
 - Paste your API Management Subscription Key in the `@apim_subscription_key` variable
-- Now perform a Find/Replace (CTRL+H), find `<your APIM resource name>` and replace with the name of your API Management Service.
+- Paste the name of your API Management Service in the `@apim_url` variable
 
 The SQL Script should look similar to the screenshot below - once you've pasted in the correct keys, run the script.
 
@@ -105,3 +105,15 @@ EXEC [dbo].[usp_DescribeTableColumns] 'SalesLT.SalesOrderDetail';
 
 EXEC [dbo].[usp_DescribeTableColumns] '[SalesLT].[Address]';
 ```
+
+## Is TSqlChatGPT self-aware?  
+Not really, but it can explain itself!  
+Try the following and see what you get:
+
+```sql
+EXEC [dbo].[usp_ExplainObject] '[dbo].[usp_AskChatGPT]';
+```
+
+Hopefully, it looks something like below:
+
+![SSMS SQL Script](./assets/selfaware.png)

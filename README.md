@@ -106,6 +106,12 @@ EXEC [dbo].[usp_DescribeTableColumns] 'SalesLT.SalesOrderDetail';
 EXEC [dbo].[usp_DescribeTableColumns] '[SalesLT].[Address]';
 ```
 
+### `dbo.usp_ExplainAllStoredProcsInDB` Examples
+```sql
+EXEC [dbo].[usp_ExplainAllStoredProcsInDB] 1; -- Replace all stored procs with explaine dversions
+EXEC [dbo].[usp_ExplainAllStoredProcsInDB] 0; -- Get all stored procedures and present samples of explain for each
+```
+
 ## Is TSqlChatGPT self-aware?  
 Not really, but it can explain itself!  
 Try the following and see what you get:

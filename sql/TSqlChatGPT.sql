@@ -5,7 +5,7 @@
 --/ Author:				Adam Buckley, Microsoft
 --/ Creation Date:		March 2023
 --/	
---/ Revision History:	1.3 (Table Column Description proc added)
+--/ Revision History:	1.4 (Error handling improved, and no longer need to find/replace APIM URL)
 --/	
 --/ 
 --/ DISCLAIMER: 
@@ -17,8 +17,7 @@
 --/
 --/ Provide your API key for OpenAI service (this is for OpenAI, not Azure OpenAI service)
 --/ And also the subscription key for the Azure API Manager API
---/ The APIM URL Paramater needs to match the API Manager Service URL (e.g. https://<your APIM resource>.azure-api.net)
---/ Do a find/replace on <your APIM resource> and replace with the name of your APIM Service (this will then update the default parameters for the stored procs)
+--/ The APIM URL Paramater needs to match the API Manager Service URL (e.g. https://myapimanagerresourcename.azure-api.net)
 --/
 --/ Usage Examples:
 --/ 
@@ -63,6 +62,17 @@ WITH
 ';
 EXEC sp_executesql @sql_cmd;
 
+-- We need to reference the APIM URL in various procs, so rather create 'global' APIM URL default that other procs/functions can use if not provided
+-- Do this by creating a UDF based on the @apim_url parameter above
+SET @sql_cmd = N'
+CREATE OR ALTER FUNCTION dbo.ApiManagementInstanceUrl()
+RETURNS NVARCHAR(255) AS
+BEGIN
+	RETURN N''' + @apim_url + ''';
+END
+';
+EXEC sp_executesql @sql_cmd;
+
 -- Drop/Create proc to Print long strings (useful given size of response from ChatGPT)
 IF EXISTS (SELECT * FROM sys.objects WHERE type = 'P' AND OBJECT_ID = OBJECT_ID('dbo.usp_PrintMax'))
     DROP PROCEDURE [dbo].[usp_PrintMax];
@@ -100,43 +110,86 @@ GO
 CREATE PROCEDURE [dbo].[usp_AskChatGPT]
 	@message		NVARCHAR(MAX),
 	@response		NVARCHAR(MAX)   = NULL OUTPUT,
-	@apim_url		NVARCHAR(255)	= N'https://<your APIM resource name>.azure-api.net',
+	@apim_url		NVARCHAR(255)	= NULL,  -- If not provided, then default value retrieved using dbo.ApiManagementInstanceUrl()
 	@timeout		INT				= 60,
 	@print_response	BIT				= 1
 AS
 BEGIN
 	SET NOCOUNT ON;
 
-	DECLARE @request				NVARCHAR(MAX),
-			@apim_openai_endpoint	NVARCHAR(1000),
-			@sql_cmd				NVARCHAR(MAX);
+	BEGIN TRY
+		DECLARE @request				NVARCHAR(MAX),
+				@apim_openai_endpoint	NVARCHAR(1000),
+				@sql_cmd				NVARCHAR(MAX),
+				@status_code			INT,
+				@status_description		NVARCHAR(4000);
 
-	-- Configure APIM API endpoint
-	SET @apim_openai_endpoint = @apim_url + N'/chat/completions';
+		-- If no APIM URL provided, then set to default
+		SELECT @apim_url = ISNULL(@apim_url, dbo.ApiManagementInstanceUrl())
 
-	-- Now make sure the message is a single line; escape characters such as tab, newline and quote
-	SET @message = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(@message, N'"', N'\"'), N'''', N''''''), CHAR(9), N'\t'), CHAR(10), N'\n'), CHAR(13), N'\r')
+		-- Configure APIM API endpoint
+		SET @apim_openai_endpoint = @apim_url + N'/chat/completions';
 
-	-- Inject the message into the request payload using the gpt-3.5 model
-	SET @request = N'{"model": "gpt-3.5-turbo","messages": [{"role": "user", "content": "' + @message + '"}]}'
+		-- Now make sure the message is a single line; escape characters such as tab, newline and quote, and escape characters to ensure valid JSON
+		SET @message = STRING_ESCAPE(REPLACE(REPLACE(REPLACE(REPLACE(@message, N'''', N''''''), CHAR(9), N'\t'), CHAR(10), N'\n'), CHAR(13), N'\r'), 'json');
 
-	-- Invoke APIM endpoint which wraps the OpenAI chat completion API 
-	EXEC sp_invoke_external_rest_endpoint
-		@url		= @apim_openai_endpoint
-	  , @payload	= @request
-	  , @method		= 'POST'
-	  , @timeout	= @timeout
-	  , @credential	= @apim_url
-	  , @response	= @response OUTPUT
+		-- Inject the message into the request payload using the gpt-3.5 model
+		SET @request = N'{"model": "gpt-3.5-turbo","messages": [{"role": "user", "content": "' + @message + '"}]}'
 
-	-- Extract the message from the JSON response
-	-- TODO: need error handling here to handle non-200 responses
-	SELECT @response = JSON_VALUE(@response, '$.result.choices[0].message.content');
+		-- Invoke APIM endpoint which wraps the OpenAI chat completion API 
+		EXEC sp_invoke_external_rest_endpoint
+			@url		= @apim_openai_endpoint
+		  , @payload	= @request
+		  , @method		= 'POST'
+		  , @timeout	= @timeout
+		  , @credential	= @apim_url
+		  , @response	= @response OUTPUT
 
-	-- Print response if required
-	IF @print_response = 1
-		EXEC [dbo].[usp_PrintMax] @response;
+		-- Check for a JSON response
+		IF (@response IS NULL) OR ISNULL(ISJSON(@response),0) = 0
+			THROW 50000, 'Calling the API Management service did not return a valid JSON response', 1;
 
+		-- See if an Error Message has been returned
+		SELECT @status_description = JSON_VALUE(@response, '$.result.error.message');
+		IF @status_description IS NOT NULL
+			THROW 50000, @status_description, 1;
+
+		-- Get the Response Status Code
+		SELECT @status_code = JSON_VALUE(@response, '$.response.status.http.code');
+
+		-- Check Status Code and Description are found in the response
+		IF (@status_code IS NULL)
+			THROW 50000, 'The API Management service failed to return an HTTP Status Code in the response', 1;
+			
+		-- Check if Status Code is 200 (OK) - if not then throw error
+		IF @status_code <> 200
+		BEGIN
+			SET @status_description = JSON_VALUE(@response, '$.result.message');
+			THROW 50000, @status_description, 1;
+		END
+
+		-- Extract the message from the JSON response
+		SELECT @response = JSON_VALUE(@response, '$.result.choices[0].message.content');
+		IF @response IS NULL
+			THROW 50000, 'It was not possible to extract a message response from the OpenAI Chat API', 1;
+
+		-- Print response if required
+		IF @print_response = 1
+			EXEC [dbo].[usp_PrintMax] @response;
+	END TRY
+	BEGIN CATCH
+
+		DECLARE @error_message	NVARCHAR(4000)	= ERROR_MESSAGE(),
+				@error_severity	INT				= ERROR_SEVERITY(),
+				@error_state	INT				= ERROR_STATE();
+
+		-- Check the URL is valid; likely to be invalid if someone has forgotten to configure the API management instance properly
+		IF ERROR_NUMBER() = 31614
+			SET @error_message = N'The API Management Instance URL is invalid - it should look something like: https://apimanagementresourcename.azure-api.net'
+
+		RAISERROR (@error_message, @error_severity, @error_state);
+
+	END CATCH
 END;
 GO
 
@@ -148,7 +201,7 @@ GO
 CREATE PROCEDURE [dbo].[usp_ExplainObject]
 	@object			NVARCHAR(512),
 	@response		NVARCHAR(MAX)   = NULL OUTPUT,
-	@apim_url		NVARCHAR(255)	= N'https://<your APIM resource name>.azure-api.net',
+	@apim_url		NVARCHAR(255)	= NULL,  -- If not provided, then default value retrieved using dbo.ApiManagementInstanceUrl()
 	@timeout		INT				= 60,
 	@print_response	BIT				= 1
 AS
@@ -227,8 +280,8 @@ GO
 CREATE PROCEDURE [dbo].[usp_GenerateTestDataForTable]
 	@object			NVARCHAR(512),
 	@response		NVARCHAR(MAX)   = NULL OUTPUT,
-	@apim_url		NVARCHAR(255)	= N'https://<your APIM resource name>.azure-api.net',
-	@timeout		INT				= 180,  -- longer default timeout for test data generation
+	@apim_url		NVARCHAR(255)	= NULL,  -- If not provided, then default value retrieved using dbo.ApiManagementInstanceUrl()
+	@timeout		INT				= 180,   -- longer default timeout for test data generation
 	@num_records	INT				= 10,
 	@print_response	BIT				= 1
 AS
@@ -268,7 +321,7 @@ GO
 CREATE PROCEDURE [dbo].[usp_GenerateUnitTestForObject]
 	@object			NVARCHAR(512),
 	@response		NVARCHAR(MAX)   = NULL OUTPUT,
-	@apim_url		NVARCHAR(255)	= N'https://<your APIM resource name>.azure-api.net',
+	@apim_url		NVARCHAR(255)	= NULL,  -- If not provided, then default value retrieved using dbo.ApiManagementInstanceUrl()
 	@timeout		INT				= 90,
 	@print_response	BIT				= 1
 AS
@@ -309,7 +362,7 @@ GO
 CREATE PROCEDURE [dbo].[usp_DescribeTableColumns]
 	@object			NVARCHAR(512),
 	@response		NVARCHAR(MAX)   = NULL OUTPUT,
-	@apim_url		NVARCHAR(255)	= N'https://<your APIM resource name>.azure-api.net',
+	@apim_url		NVARCHAR(255)	= NULL,  -- If not provided, then default value retrieved using dbo.ApiManagementInstanceUrl()
 	@timeout		INT				= 120,
 	@print_response	BIT				= 1
 AS
@@ -361,50 +414,49 @@ CREATE PROCEDURE [dbo].[usp_ExplainAllStoredProcsInDB]
 	@UpdateProcedures bit = 1 -- Switch to automatically update stored procedures
 
 AS
-
-DECLARE @ProcName	nvarchar(max);
-DECLARE @ProcDef	nvarchar(max);
-DECLARE @ProcGPT	nvarchar(max);
-DECLARE @ProcSuffix	varchar(3) = 'gpt';
-
--- Get all stored procedures and exclude chatgpt code
-DECLARE procCursor CURSOR FOR
-	select name, object_definition(object_id) from sys.objects
-	where type = 'P'
-	and name not in ('usp_Generate_Create_Table_Sql', 'usp_AskChatGPT', 'usp_ExplainObject', 
-	'usp_PrintMax', 'usp_GenerateTestDataForTable', 'usp_GenerateUnitTestForObject', 'usp_DescribeTableColumns');
-
-OPEN procCursor;
-
-FETCH NEXT FROM procCursor INTO @ProcName, @ProcDef;
-WHILE @@FETCH_STATUS = 0
 BEGIN
+	DECLARE @ProcName	nvarchar(max);
+	DECLARE @ProcDef	nvarchar(max);
+	DECLARE @ProcGPT	nvarchar(max);
+	DECLARE @ProcSuffix	varchar(3) = 'gpt';
 
-	IF NOT LEFT(@ProcDef , LEN('/* Explained by ChatGPT3')) LIKE '/* Explained by ChatGPT3'
+	-- Get all stored procedures and exclude chatgpt code
+	DECLARE procCursor CURSOR FOR
+		select name, object_definition(object_id) from sys.objects
+		where type = 'P'
+		and name not in ('usp_Generate_Create_Table_Sql', 'usp_AskChatGPT', 'usp_ExplainObject', 
+		'usp_PrintMax', 'usp_GenerateTestDataForTable', 'usp_GenerateUnitTestForObject', 'usp_DescribeTableColumns');
+
+	OPEN procCursor;
+
+	FETCH NEXT FROM procCursor INTO @ProcName, @ProcDef;
+	WHILE @@FETCH_STATUS = 0
 	BEGIN
-		EXEC [dbo].[usp_ExplainObject] @object = @ProcName, @response = @ProcGPT OUTPUT;
-		SELECT @ProcGPT = '/* Explained by ChatGPT3' + CHAR(13) + @ProcGPT + CHAR(13) + '*/' + REPLACE(@ProcDef, 'CREATE PROCEDURE', 'ALTER PROCEDURE')
-		
-		IF @UpdateProcedures = 1  
+
+		IF NOT LEFT(@ProcDef , LEN('/* Explained by ChatGPT3')) LIKE '/* Explained by ChatGPT3'
 		BEGIN
-			EXEC sp_executeSQL @ProcGPT;
-			SELECT 'Stored Procedure Altered : ' + @ProcName as Status, @ProcDef as Original, @ProcGPT as Updatedto;
+			EXEC [dbo].[usp_ExplainObject] @object = @ProcName, @response = @ProcGPT OUTPUT;
+			SELECT @ProcGPT = '/* Explained by ChatGPT3' + CHAR(13) + @ProcGPT + CHAR(13) + '*/' + REPLACE(@ProcDef, 'CREATE PROCEDURE', 'ALTER PROCEDURE')
+		
+			IF @UpdateProcedures = 1  
+			BEGIN
+				EXEC sp_executeSQL @ProcGPT;
+				SELECT 'Stored Procedure Altered : ' + @ProcName as Status, @ProcDef as Original, @ProcGPT as Updatedto;
+			END;
+			ELSE
+			BEGIN
+				SELECT 'Stored Procedure Explain: ' + @ProcName as Status, @ProcDef as Original, @ProcGPT as WithExplain;
+			END;
 		END;
 		ELSE
 		BEGIN
-			SELECT 'Stored Procedure Explain: ' + @ProcName as Status, @ProcDef as Original, @ProcGPT as WithExplain;
-		END;
-	END;
-	ELSE
-	BEGIN
-			SELECT 'Stored Procedure skipped (already explained): ' + @ProcName as Status, @ProcDef as Original, @ProcDef as WithExplain;
+				SELECT 'Stored Procedure skipped (already explained): ' + @ProcName as Status, @ProcDef as Original, @ProcDef as WithExplain;
 		
+		END;
+
+		FETCH NEXT FROM procCursor INTO @procName, @procDef;
 	END;
-
-    FETCH NEXT FROM procCursor INTO @procName, @procDef;
+	CLOSE procCursor;
+	DEALLOCATE procCursor;
 END;
-CLOSE procCursor;
-DEALLOCATE procCursor;
-GO;
-
-
+GO

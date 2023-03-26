@@ -69,6 +69,9 @@ Currently there are 5 stored procedures to try:
 > **Warning**
 > It is recommended to avoid use of these procedures on production systems, or any database containing sensitive or private data.  In the case of the last 4 procedures, the definition of your tables or code for your objects is sent to the OpenAI API (via your API Management Instance).  Only Code and table schemas are sent to ChatGPT - no data is ever sent to ChatGPT.
 
+## Examples with sample outputs
+The following are some simple examples you can try with TSqlChatGPT.  It can useful sometimes to ask for a T-SQL script to avoid statements that aren't supported by SQL Server.
+
 ### `dbo.usp_AskChatGPT` Examples
 ```sql
 EXEC [dbo].[usp_AskChatGPT] 'Generate a CREATE TABLE script for Customer data';
@@ -77,6 +80,7 @@ EXEC [dbo].[usp_AskChatGPT] 'Generate a SQL function to calculate how many days 
 
 EXEC [dbo].[usp_AskChatGPT] 'Explain this code: SELECT DATEDIFF(DAY,GETDATE(),DATEFROMPARTS(2023,12,25))';
 ```
+![Example 1](./assets/example1.png)
 
 ### `dbo.usp_ExplainObject` Examples
 ```sql
@@ -84,6 +88,7 @@ EXEC [dbo].[usp_ExplainObject] 'dbo.uspLogError';
 
 EXEC [dbo].[usp_ExplainObject] '[SalesLT].[vProductAndDescription]';
 ```
+![Example 2](./assets/example2.png)
 
 ### `dbo.usp_GenerateTestDataForTable` Examples
 ```sql
@@ -92,6 +97,8 @@ EXEC [dbo].[usp_GenerateTestDataForTable] 'SalesLT.ProductCategory';
 EXEC [dbo].[usp_GenerateTestDataForTable] '[SalesLT].[Address]';
 ```
 
+![Example 3](./assets/example3.png)
+
 ### `dbo.usp_GenerateUnitTestForObject` Examples
 ```sql
 EXEC [dbo].[usp_GenerateUnitTestForObject] 'dbo.uspLogError';
@@ -99,12 +106,16 @@ EXEC [dbo].[usp_GenerateUnitTestForObject] 'dbo.uspLogError';
 EXEC [dbo].[usp_GenerateUnitTestForObject] 'dbo.ufnGetSalesOrderStatusText';
 ```
 
+![Example 4](./assets/example4.png)
+
 ### `dbo.usp_DescribeTableColumns` Examples
 ```sql
 EXEC [dbo].[usp_DescribeTableColumns] 'SalesLT.SalesOrderDetail';
 
 EXEC [dbo].[usp_DescribeTableColumns] '[SalesLT].[Address]';
 ```
+
+![Example 5](./assets/example5.png)
 
 ### `dbo.usp_ExplainAllStoredProcsInDB` Examples
 ```sql

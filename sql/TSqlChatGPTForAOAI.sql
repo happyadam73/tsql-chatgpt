@@ -6,6 +6,7 @@
 --/ Creation Date:		June 2023
 --/	
 --/ Revision History:	1.0 
+--/                     1.1 (AWB, 16/08/2023) - default model is 16K token version (available in UK South), and amend system message to support CODEONLY response
 --/	
 --/ 
 --/ DISCLAIMER: 
@@ -43,7 +44,7 @@
 
 DECLARE @azure_openai_api_key		VARCHAR(50)  = 'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
 		@azure_openai_endpoint		VARCHAR(255) = 'https://<your Azure OpenAI resource name>.openai.azure.com/',
-		@chatgpt_deployment_name	VARCHAR(255) = 'gpt-35-turbo',
+		@chatgpt_deployment_name	VARCHAR(255) = 'gpt-35-turbo-16k',
 		@sql_cmd					NVARCHAR(MAX);
 
 -- (OPTIONAL): Customise your chat agent here
@@ -56,6 +57,7 @@ For scripts containing a CREATE statement, make sure the script includes a check
 Only create the object if it doesn''t exist.  
 Scripts should only use dynamic SQL if required.  
 Try to avoid using sp_executesql.
+If the request begins with CODEONLY, then the response must only contain T-SQL code and do not add any text before or after the T-SQL code - remove the term CODEONLY from the response.
 ';
 
 -- Create Database Master Key; it's Azure SQL DB, so no password required

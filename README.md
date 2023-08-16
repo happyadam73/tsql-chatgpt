@@ -2,6 +2,48 @@
 
 > ChatGPT integration relies on `sp_invoke_external_rest_endpoint` which is currently only available for Azure SQL Database (Public Preview)
 
+TSqlChatGPT requires a Chat-based Large Language Model (LLM) - this guide provides two different options to do this:
+- Use an **Azure** OpenAI Service - this is the simplest and cheapest method for trying TSqlChatGPT
+- Use the OpenAI Service (non-Azure) - this is a more involved setup requiring API Manager, and will incur additional cost as detailed below.
+
+
+# Option 1: Deploying TSqlChatGPT with Azure OpenAI
+
+> **Note**
+> Expected costs for running this demonstration are around $0.65/day:
+> - Azure SQL Database (Standard S0): ~ $20/month
+
+## Pre-requisites
+
+- If you haven't done so already, you will need to sign up for the Azure OpenAI Service: https://learn.microsoft.com/en-us/azure/ai-services/openai/overview#how-do-i-get-access-to-azure-openai.  Once signed up, create an instance of the Azure OpenAI Service - and create a deployment for one of the ChatGPT models (for example *gpt-3.5-turbo* or *gpt-35-turbo-16k* - note that availability of models is region dependent).
+- Once setup, navigate to the Azure OpenAI resource in the Azure Portal, and select "Keys and Endpoint" from the menu.  Make a secure copy of one of the keys (don't share), and also the endpoint - you'll need these in the T-SQL script.
+- You will also need an Azure SQL Database to run the SQL script and to test the ChatGPT integration.  If you don't already have an existing Azure SQL DB or you wish to create a sample Database for this exercise, then follow the optional step below and click on the "Deploy to Azure" button.
+
+### OPTIONAL: Deploy the AdventureWorksLT Sample Database
+Click on the button below to deploy a new Azure SQL database using the AdventureWorksLT sample data.
+
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fhappyadam73%2Ftsql-chatgpt%2Fmain%2Fazuresqldb%2Fazuredeploy.json)
+
+## 1. Run the TSqlChatGPTForAOAI SQL Script
+
+> Use either [SQL Management Studio](https://learn.microsoft.com/en-us/sql/ssms/download-sql-server-management-studio-ssms) or [Azure Data Studio](https://learn.microsoft.com/en-us/sql/azure-data-studio/download-azure-data-studio) to run the ChatGPT SQL commands - most responses will be displayed in the Messages tab and this may not work correctly in other client applications (such as the Query Preview feature in the Azure Portal)
+
+Open SSMS or Azure Data Studio and connect to your Azure SQL Database - either download and open the TSqlChatGPTForAOAI.sql file (from the sql folder) or copy the contents to a new query window.
+
+At the top of the script, replace the following:
+
+- Paste your Azure OpenAI API Key in the `@azure_openai_api_key` variable
+- Paste your Azure OpenAI Endpoint in the `@azure_openai_endpoint` variable
+- Paste the deployment (not model) name for your ChatGPT model in the `@chatgpt_deployment_name` variable
+- OPTIONAL: Modify or enhance the system message in `@system_message` variable to fine-tune the model responses
+
+The SQL Script should look similar to the screenshot below - once you've pasted in the parameter values, run the script.
+
+![SSMS SQL Script](./assets/ssms2.png)
+
+
+# Option 2: Deploying TSqlChatGPT using common OpenAI Service (non-Azure)
+
 > **Note**
 > Expected costs for running this demonstration are around $2.30/day:
 > - Azure SQL Database (Standard S0): ~ $20/month
@@ -57,7 +99,7 @@ The SQL Script should look similar to the screenshot below - once you've pasted 
 
 ![SSMS SQL Script](./assets/ssms.png)
 
-## 4. How to use TSqlChatGPT
+# How to use TSqlChatGPT
 
 Currently there are 5 stored procedures to try:
 - `dbo.usp_AskChatGPT` - send any message to ChatGPT and get a response (remember ChatGPT does not have any context with regards to your database objects)

@@ -10,8 +10,9 @@ TSqlChatGPT requires a Chat-based Large Language Model (LLM) - this guide provid
 # Option 1: Deploying TSqlChatGPT with Azure OpenAI
 
 > **Note**
-> Expected costs for running this demonstration are around $0.65/day:
+> Expected costs for running this demonstration are around $1/day:
 > - Azure SQL Database (Standard S0): ~ $20/month
+> - Azure OpenAI Service (> 100K tokens/day): ~$10/month
 
 ## Pre-requisites
 
@@ -61,6 +62,7 @@ The SQL Script should look similar to the screenshot below - once you've pasted 
 > Expected costs for running this demonstration are around $2.30/day:
 > - Azure SQL Database (Standard S0): ~ $20/month
 > - Azure API Management (Developer SKU): ~ $50/month
+> - OpenAI Costs not included (but may be covered by Free/ChatGPT Plus subscriptions)
 
 
 ## Pre-requisites
@@ -114,8 +116,9 @@ The SQL Script should look similar to the screenshot below - once you've pasted 
 
 # How to use TSqlChatGPT
 
-Currently there are 5 stored procedures to try:
+Currently there are 6 stored procedures to try:
 - `dbo.usp_AskChatGPT` - send any message to ChatGPT and get a response (remember ChatGPT does not have any context with regards to your database objects)
+- `dbo.usp_ExecuteNaturalQuery` - query your database using natural language rather than SQL (Warning! AI Generated SQL should not be run unchecked on Production databases!)
 - `dbo.usp_ExplainObject` - sends the object definition of any function/procedure/view and returns an explanation of the code (or view)
 - `dbo.usp_GenerateTestDataForTable` - sends ChatGPT a CREATE table script based on the table you specify, and asks for an INSERT statement to be generated with test data records
 - `dbo.usp_GenerateUnitTestForObject` - sends the object definition of any function/procedure/view and generates a tSQLt Unit Test Stored Procedure for testing the object
@@ -136,6 +139,16 @@ EXEC [dbo].[usp_AskChatGPT] 'Generate a SQL function to calculate how many days 
 EXEC [dbo].[usp_AskChatGPT] 'Explain this code: SELECT DATEDIFF(DAY,GETDATE(),DATEFROMPARTS(2023,12,25))';
 ```
 ![Example 1](./assets/example1.png)
+
+### `dbo.usp_ExecuteNaturalQuery` Examples
+```sql
+EXEC [dbo].[usp_ExecuteNaturalQuery] 'Return a 7-day rolling average number of sales grouped by territory, product and date ordered by date for any sales in 2012';
+
+EXEC [dbo].[usp_ExecuteNaturalQuery] 'Which promotions, excluding "No Discount", had the largest total sales in the second quarter of 2012';
+
+EXEC [dbo].[usp_ExecuteNaturalQuery] 'Who were the top 10 performing resellers in 2011';
+```
+![Example 6](./assets/example6.png)
 
 ### `dbo.usp_ExplainObject` Examples
 ```sql

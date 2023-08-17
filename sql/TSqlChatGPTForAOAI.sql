@@ -1,46 +1,56 @@
---/	
---/ Product:			TSqlChatGPTForAOAI
---/ Description:		Call ChatGPT from Azure SQL Database, and describe objects within the database
---/	
---/ Author:				Adam Buckley, Microsoft
---/ Creation Date:		June 2023
---/	
---/ Revision History:	1.0 
---/                     1.1 (AWB, 16/08/2023) - default model is 16K token version (available in UK South), and amend system message to support CODEONLY response
---/	
---/ 
---/ DISCLAIMER: 
---/ THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A 
---/ PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, 
---/ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
---/
---/ IMPORTANT: This will currently only work on Azure SQL Database (not on SQL Server or Azure SQL Managed Instance)
---/
---/ PRE-REQUISITES:
---/ You will need an Azure OpenAI resource deployed, and within that resource a Chat GPT model needs to be deployed (e.g. gpt-35-turbo).
---/
---/ INSTRUCTIONS:
---/ 
---/ STEP 1: Configure the @azure_openai_api_key with either the primary or secondary Azure OpenAI key (you can find these keys in the Azure Portal in the "Keys and Endpoint" menu of the Azure OpenAI resource)
---/ STEP 2: Configure the @azure_openai_endpoint with the Endpoint URL (endpoint is found in the same place as the API keys)
---/ STEP 3: Configure the @chatgpt_deployment_name with the name of the deployment of the ChatGPT model to use, i.e. gpt-35-turbo - note this is DEPLOYMENT name, not model name (you can configure this in the Azure AI Studio)
---/ STEP 4: Optional step - customise the @system_message parameter to guide the behaviour of the ChatGPT agent.
---/
---/ Usage Examples:
---/ 
---/		EXEC [dbo].[usp_AskChatGPT] 'Generate a product table for a fashion retailer';
---/		EXEC [dbo].[usp_AskChatGPT] 'Generate a function to calculate how many days until a specified date';
---/		EXEC [dbo].[usp_AskChatGPT] 'Explain this code: SELECT DATEDIFF(DAY,GETDATE(),DATEFROMPARTS(2023,12,25))';
---/
---/		EXEC [dbo].[usp_ExplainObject] 'dbo.uspLogError';
---/		EXEC [dbo].[usp_ExplainObject] '[SalesLT].[vProductAndDescription]';
---/
---/		EXEC [dbo].[usp_GenerateTestDataForTable] '[SalesLT].[Address]'
---/
---/		EXEC [dbo].[usp_GenerateUnitTestForObject] 'dbo.ufnGetSalesOrderStatusText';
---/
---/		EXEC [dbo].[usp_DescribeTableColumns] '[SalesLT].[SalesOrderDetail]';
---/
+--	
+-- Product:			    TSqlChatGPTForAOAI
+-- Description:		    Call ChatGPT from Azure SQL Database, and describe objects within the database
+--	
+-- Author:				Adam Buckley, Microsoft
+-- Creation Date:       June 2023
+--	
+-- Revision History:	1.0 
+--                      1.1 (AWB, 16/08/2023) - default model is 16K token version (available in UK South), and amend system message to support CODEONLY response
+--                      1.2 (AWB, 17/08/2023) - Added natural query language support with the usp_ExecuteNaturalQuery stored procedure
+--	
+-- 
+-- DISCLAIMER: 
+-- THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A 
+-- PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, 
+-- TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+--
+-- IMPORTANT: This will currently only work on Azure SQL Database (not on SQL Server or Azure SQL Managed Instance)
+--
+-- PRE-REQUISITES:
+-- You will need an Azure OpenAI resource deployed, and within that resource a Chat GPT model needs to be deployed (e.g. gpt-35-turbo).
+--
+-- INSTRUCTIONS:
+-- 
+-- STEP 1: Configure the @azure_openai_api_key with either the primary or secondary Azure OpenAI key (you can find these keys in the Azure Portal in the "Keys and Endpoint" menu of the Azure OpenAI resource)
+-- STEP 2: Configure the @azure_openai_endpoint with the Endpoint URL (endpoint is found in the same place as the API keys)
+-- STEP 3: Configure the @chatgpt_deployment_name with the name of the deployment of the ChatGPT model to use, i.e. gpt-35-turbo - note this is DEPLOYMENT name, not model name (you can configure this in the Azure AI Studio)
+-- STEP 4: Optional step - customise the @system_message parameter to guide the behaviour of the ChatGPT agent.
+--
+-- Usage Examples:
+-- 
+--		EXEC [dbo].[usp_AskChatGPT] 'Generate a product table for a fashion retailer';
+--		EXEC [dbo].[usp_AskChatGPT] 'Generate a function to calculate how many days until a specified date';
+--		EXEC [dbo].[usp_AskChatGPT] 'Explain this code: SELECT DATEDIFF(DAY,GETDATE(),DATEFROMPARTS(2023,12,25))';
+--
+--      EXEC [dbo].[usp_ExecuteNaturalQuery] 'What were the most ordered products in June 2008'
+--      EXEC [dbo].[usp_ExecuteNaturalQuery] 'Which product category has the most products'
+--      EXEC [dbo].[usp_ExecuteNaturalQuery] 'List all the red or black products and include the product model and category name'
+--
+--      -- These natural language queries work with the much larger AdventureWorksDW database
+--      EXEC [dbo].[usp_ExecuteNaturalQuery] 'Return a 7-day rolling average number of sales grouped by territory, product and date ordered by date for any sales in 2012';
+--      EXEC [dbo].[usp_ExecuteNaturalQuery] 'List salaried employees with the highest amount of sick leave and include their manager''s name in the list';
+--      EXEC [dbo].[usp_ExecuteNaturalQuery] 'Which promotions, excluding "No Discount", had the largest total sales in the second quarter of 2012';
+--
+--		EXEC [dbo].[usp_ExplainObject] 'dbo.uspLogError';
+--		EXEC [dbo].[usp_ExplainObject] '[SalesLT].[vProductAndDescription]';
+--
+--		EXEC [dbo].[usp_GenerateTestDataForTable] '[SalesLT].[Address]'
+--
+--		EXEC [dbo].[usp_GenerateUnitTestForObject] 'dbo.ufnGetSalesOrderStatusText';
+--
+--		EXEC [dbo].[usp_DescribeTableColumns] '[SalesLT].[SalesOrderDetail]';
+--
 
 DECLARE @azure_openai_api_key		VARCHAR(50)  = 'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
 		@azure_openai_endpoint		VARCHAR(255) = 'https://<your Azure OpenAI resource name>.openai.azure.com/',
@@ -48,6 +58,7 @@ DECLARE @azure_openai_api_key		VARCHAR(50)  = 'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
 		@sql_cmd					NVARCHAR(MAX);
 
 -- (OPTIONAL): Customise your chat agent here
+-- Do not remove the CODEONLY instruction if you plan on using the Natural Language Query feature
 DECLARE @system_message NVARCHAR(MAX) = N'
 You are a helpful database administrator and developer.  
 Your responses should always be for Transact SQL (or T-SQL).  
@@ -154,7 +165,8 @@ CREATE PROCEDURE [dbo].[usp_AskChatGPT]
 	@response		NVARCHAR(MAX)   = NULL OUTPUT,
 	@chat_endpoint	NVARCHAR(255)	= NULL,  -- If not provided, then default value retrieved using dbo.AzureOpenAIChatEndpointUrl()
 	@timeout		INT				= 60,
-	@print_response	BIT				= 1
+	@print_response	BIT				= 1,
+    @debug          BIT             = 0
 AS
 BEGIN
 	SET NOCOUNT ON;
@@ -165,7 +177,18 @@ BEGIN
 				@sql_cmd				NVARCHAR(MAX),
 				@status_code			INT,
 				@system_message			NVARCHAR(MAX),
-				@status_description		NVARCHAR(4000);
+                @error_code             INT,
+                @retry_after_secs       INT,
+                @waitfor_delay          CHAR(8),
+				@status_description		NVARCHAR(4000),
+                @debug_message          NVARCHAR(MAX);
+
+        -- Print request (non prompt injected) if in debug mode
+        IF @debug = 1
+        BEGIN
+            SET @debug_message = FORMAT(GETDATE(),'HH:mm:ss.ff') + ' - Request: ' + @message;
+            EXEC [dbo].[usp_PrintMax] @debug_message;
+        END
 
 		-- If no Chat endpoint URL provided, then set to default
 		SELECT @chat_endpoint = ISNULL(@chat_endpoint, dbo.AzureOpenAIChatEndpointUrl());
@@ -195,6 +218,26 @@ BEGIN
 		IF (@response IS NULL) OR ISNULL(ISJSON(@response),0) = 0
 			THROW 50000, 'Calling the Azure OpenAI service did not return a valid JSON response', 1;
 
+        -- First check to see if we get a rate limiting 429 error - if so, back-off using the Retry-After header value and try again
+        SELECT @error_code = JSON_VALUE(@response, '$.result.error.code');
+        IF @error_code = 429
+        BEGIN
+            -- Get the retry after period and do a WAITFOR to pause
+            SELECT @retry_after_secs = JSON_VALUE(@response, '$.response.headers."Retry-After"');
+            SELECT @waitfor_delay = CONVERT(CHAR(8), DATEADD(SECOND, @retry_after_secs, 0), 108);
+            WAITFOR DELAY @waitfor_delay;  
+
+            -- Now repeat the request
+		    EXEC sp_invoke_external_rest_endpoint
+			    @url		= @chat_endpoint
+		      , @payload	= @request
+		      , @method		= 'POST'
+		      , @timeout	= @timeout
+		      , @credential	= @credential
+		      , @response	= @response OUTPUT
+
+        END
+
 		-- See if an Error Message has been returned
 		SELECT @status_description = JSON_VALUE(@response, '$.result.error.message');
 		IF @status_description IS NOT NULL
@@ -219,9 +262,16 @@ BEGIN
 		IF @response IS NULL
 			THROW 50000, 'It was not possible to extract a message response from the Azure OpenAI Chat API', 1;
 
-		-- Print response if required
-		IF @print_response = 1
+		-- Print response if required (and not in debug mode)
+		IF @print_response = 1 AND @debug = 0
 			EXEC [dbo].[usp_PrintMax] @response;
+
+        -- Print request (non prompt injected) if in debug mode
+        IF @debug = 1
+        BEGIN
+            SET @debug_message = FORMAT(GETDATE(),'HH:mm:ss.ff') + ' - Response: ' + @response;
+            EXEC [dbo].[usp_PrintMax] @debug_message;
+        END
 
 	END TRY
 	BEGIN CATCH
@@ -566,5 +616,182 @@ BEGIN
 	END;
 	CLOSE procCursor;
 	DEALLOCATE procCursor;
+END;
+GO
+
+-- Drop Proc if already exists
+IF EXISTS (SELECT * FROM sys.objects WHERE type = 'P' AND OBJECT_ID = OBJECT_ID('dbo.usp_GetRelevantTablePromptForNaturalQuery'))
+    DROP PROCEDURE [dbo].[usp_GetRelevantTablePromptForNaturalQuery];
+GO
+
+-- Return part of a ChatGPT prompt which contains a list of CREATE TABLE statements for all the tables relevant to a natural language query
+-- ChatGPT is fed the names of all the database tables as well as the natural languge query and asked to decide on what is relevant
+CREATE PROCEDURE [dbo].[usp_GetRelevantTablePromptForNaturalQuery]
+	@query		    NVARCHAR(MAX),
+	@table_prompt	NVARCHAR(MAX)   = NULL OUTPUT,
+	@print_response	BIT				= 1,
+    @debug          BIT             = 0
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+	BEGIN TRY
+		DECLARE @request				NVARCHAR(MAX),
+                @response               NVARCHAR(MAX),
+                @full_table_list        NVARCHAR(MAX),
+                @table_name             NVARCHAR(512),
+                @create_table_sql       NVARCHAR(MAX);
+
+        -- Get comma separated list of ALL database schemas/tables
+        SELECT @full_table_list = STRING_AGG(QUOTENAME(TABLE_SCHEMA) + '.' + QUOTENAME(TABLE_NAME),', ') 
+        FROM INFORMATION_SCHEMA.TABLES
+        WHERE TABLE_TYPE = 'BASE TABLE';
+
+        -- Formulate request for LLM
+        SET @request = N'
+Here is a comma separated list of all the tables within a database:
+' + @full_table_list + '
+
+To answer the following question, "' + @query + '", which of those tables listed would you expect to need in a SQL query to answer the question.
+
+Your response should contain only the names of the tables requires in a single comma separated list.  The list should also include tables that might be helpful or useful in answering the response.
+'
+        -- Get LLM response
+        EXEC [dbo].[usp_AskChatGPT] @request, @full_table_list OUTPUT, @print_response = 0, @debug = @debug;
+
+        -- Now create a cursor for each of the tables returned in the list
+        SET @table_prompt = N'';
+        DECLARE table_cursor CURSOR FOR
+        SELECT LTRIM(RTRIM([value])) FROM STRING_SPLIT(@full_table_list, ',');
+
+        OPEN table_cursor;
+        FETCH NEXT FROM table_cursor INTO @table_name;
+
+        WHILE @@FETCH_STATUS = 0
+        BEGIN
+            -- Generate the Create table script and append to the prompt
+            EXEC dbo.usp_Generate_Create_Table_Sql @table_name, @create_table_sql OUTPUT;
+            SET @table_prompt = @table_prompt + @create_table_sql + CHAR(13) + CHAR(10);
+    
+            FETCH NEXT FROM table_cursor INTO @table_name;
+        END
+
+        CLOSE table_cursor;
+        DEALLOCATE table_cursor;
+
+		-- Print response if required
+		IF @print_response = 1 AND @debug = 0
+			EXEC [dbo].[usp_PrintMax] @table_prompt;
+
+	END TRY
+	BEGIN CATCH
+
+		DECLARE @error_message	NVARCHAR(4000)	= ERROR_MESSAGE(),
+				@error_severity	INT				= ERROR_SEVERITY(),
+				@error_state	INT				= ERROR_STATE();
+
+		RAISERROR (@error_message, @error_severity, @error_state);
+
+	END CATCH
+
+END;
+GO
+
+-- Drop Proc if already exists
+IF EXISTS (SELECT * FROM sys.objects WHERE type = 'P' AND OBJECT_ID = OBJECT_ID('dbo.usp_ExecuteNaturalQuery'))
+    DROP PROCEDURE [dbo].[usp_ExecuteNaturalQuery];
+GO
+
+-- WARNING!!!
+-- This Stored Procedure may cause unintended consequences - by default this stored procedure will execute SQL generated by AI
+-- Avoid using on any production systems - or set the @execute_sql parameter to 0
+--
+-- Generate and execute a T-SQL statement based on natural language query
+-- Since ChatGPT can either ignore certain instructions, or hallucinate, the T-SQL generated may be invalid.
+-- Therefore the stored procedure runs through a number of retries until the query responds successfully.
+CREATE PROCEDURE [dbo].[usp_ExecuteNaturalQuery]
+	@query		            NVARCHAR(MAX),
+	@sql	                NVARCHAR(MAX)   = NULL OUTPUT,
+	@print_response	        BIT				= 1,
+    @execute_sql            BIT             = 1,
+    @execute_sql_retries    INT             = 10,
+    @debug                  BIT             = 0
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+	BEGIN TRY
+		DECLARE @request				NVARCHAR(MAX),
+                @response               NVARCHAR(MAX),
+                @create_table_prompt    NVARCHAR(MAX),
+                @query_succeeded        BIT,
+                @attempt                INT,
+                @debug_message          NVARCHAR(MAX);
+
+        -- Get Create Table SQL prompt based on query
+        EXEC [dbo].[usp_GetRelevantTablePromptForNaturalQuery] @query, @create_table_prompt OUTPUT, @print_response = 0, @debug = @debug;
+
+        -- Formulate request for ChatGPT based on CREATE TABLE scripts for all relevant tables to answer the query
+        -- We use "CODEONLY" to tell ChatGPT to only return code (this is an instruction provided through the System Message)
+        SET @request = N'
+CODEONLY
+A database contains the following tables and columns:
+' + @create_table_prompt + '
+Generate a T-SQL query to answer the question: "' + @query + '" - the query should only reference table names and column names that appear in this request.
+For example, if the request contains the following CREATE TABLE statements:
+CREATE TABLE Table1 (Column1 VARCHAR(255), Column2 VARCHAR(255))
+CREATE TABLE Table2 (Column3 VARCHAR(255), Column4 VARCHAR(255))
+Then you should only reference Tables Table1 and Table2 and the query should only reference columns Column1, Column2, Column3 and Column4
+'
+        -- Get ChatGPT response
+        EXEC [dbo].[usp_AskChatGPT] @request, @sql OUTPUT, @print_response = 0, @debug = @debug;
+
+        -- Execute SQL if required
+        IF @execute_sql = 1
+        BEGIN
+            SET @query_succeeded = 0;
+            SET @attempt = 1
+
+            -- We keep trying until we either get a successful query response or we've exhaused all specified retry attempts
+            WHILE (@query_succeeded = 0) AND (@attempt <= @execute_sql_retries)
+            BEGIN
+                BEGIN TRY
+                    EXEC sp_executesql @sql;
+                    SET @query_succeeded = 1;
+                END TRY
+                BEGIN CATCH
+                    -- Ignore error
+                    IF @debug = 1
+                        PRINT FORMAT(GETDATE(),'HH:mm:ss.ff') + ' - Error Occurred: ' + ERROR_MESSAGE()
+                END CATCH
+                IF @debug = 1
+                BEGIN
+                    SET @debug_message = FORMAT(GETDATE(),'HH:mm:ss.ff') + ' - Attempt: ' + CAST(@attempt AS VARCHAR(10)) + ' ' + IIF(@query_succeeded = 0, 'Failed', 'Succeeded');
+                    EXEC [dbo].[usp_PrintMax] @debug_message;
+                END
+                SET @attempt = @attempt + 1;
+
+                -- We need to try again!
+                IF (@query_succeeded = 0) AND (@attempt <= @execute_sql_retries)
+                    EXEC [dbo].[usp_AskChatGPT] @request, @sql OUTPUT, @print_response = 0, @debug = @debug;
+                    
+            END
+        END
+
+		-- Print response if required (suppress this if we're in debug mode)
+		IF @print_response = 1 AND @debug = 0
+			EXEC [dbo].[usp_PrintMax] @sql;
+
+	END TRY
+	BEGIN CATCH
+
+		DECLARE @error_message	NVARCHAR(4000)	= ERROR_MESSAGE(),
+				@error_severity	INT				= ERROR_SEVERITY(),
+				@error_state	INT				= ERROR_STATE();
+
+		RAISERROR (@error_message, @error_severity, @error_state);
+
+	END CATCH
+
 END;
 GO

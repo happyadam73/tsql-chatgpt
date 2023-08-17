@@ -708,7 +708,7 @@ GO
 --
 -- Generate and execute a T-SQL statement based on natural language query
 -- Since ChatGPT can either ignore certain instructions, or hallucinate, the T-SQL generated may be invalid.
--- Therefore the stored procedure runs through a number of retries until the query returns some data.
+-- Therefore the stored procedure runs through a number of retries until the query responds successfully.
 CREATE PROCEDURE [dbo].[usp_ExecuteNaturalQuery]
 	@query		            NVARCHAR(MAX),
 	@sql	                NVARCHAR(MAX)   = NULL OUTPUT,
@@ -752,7 +752,7 @@ Then you should only reference Tables Table1 and Table2 and the query should onl
             SET @query_succeeded = 0;
             SET @attempt = 1
 
-            -- We keep trying until we either get a positive row count or we've exhaused all specified retry attempts
+            -- We keep trying until we either get a successful query response or we've exhaused all specified retry attempts
             WHILE (@query_succeeded = 0) AND (@attempt <= @execute_sql_retries)
             BEGIN
                 BEGIN TRY

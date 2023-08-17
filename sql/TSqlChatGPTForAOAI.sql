@@ -33,6 +33,11 @@
 --		EXEC [dbo].[usp_AskChatGPT] 'Generate a function to calculate how many days until a specified date';
 --		EXEC [dbo].[usp_AskChatGPT] 'Explain this code: SELECT DATEDIFF(DAY,GETDATE(),DATEFROMPARTS(2023,12,25))';
 --
+--      EXEC [dbo].[usp_ExecuteNaturalQuery] 'What were the most ordered products in June 2008'
+--      EXEC [dbo].[usp_ExecuteNaturalQuery] 'Which product category has the most products'
+--      EXEC [dbo].[usp_ExecuteNaturalQuery] 'List all the red or black products and include the product model and category name'
+--
+--      -- These natural language queries work with the much larger AdventureWorksDW database
 --      EXEC [dbo].[usp_ExecuteNaturalQuery] 'Return a 7-day rolling average number of sales grouped by territory, product and date ordered by date for any sales in 2012';
 --      EXEC [dbo].[usp_ExecuteNaturalQuery] 'List salaried employees with the highest amount of sick leave and include their manager''s name in the list';
 --      EXEC [dbo].[usp_ExecuteNaturalQuery] 'Which promotions, excluding "No Discount", had the largest total sales in the second quarter of 2012';
@@ -639,7 +644,8 @@ BEGIN
 
         -- Get comma separated list of ALL database schemas/tables
         SELECT @full_table_list = STRING_AGG(QUOTENAME(TABLE_SCHEMA) + '.' + QUOTENAME(TABLE_NAME),', ') 
-        FROM INFORMATION_SCHEMA.TABLES;
+        FROM INFORMATION_SCHEMA.TABLES
+        WHERE TABLE_TYPE = 'BASE TABLE';
 
         -- Formulate request for LLM
         SET @request = N'

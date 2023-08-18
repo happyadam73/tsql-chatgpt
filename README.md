@@ -62,7 +62,7 @@ The SQL Script should look similar to the screenshot below - once you've pasted 
 > Expected costs for running this demonstration are around $2.30/day:
 > - Azure SQL Database (Standard S0): ~ $20/month
 > - Azure API Management (Developer SKU): ~ $50/month
-> - OpenAI Costs not included (but may be covered by Free/ChatGPT Plus subscriptions)
+> - OpenAI Costs not included (typically $10/month for 100K tokens/day)
 
 
 ## Pre-requisites

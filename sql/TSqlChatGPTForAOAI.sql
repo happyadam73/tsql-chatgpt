@@ -8,6 +8,7 @@
 -- Revision History:	1.0 
 --                      1.1 (AWB, 16/08/2023) - default model is 16K token version (available in UK South), and amend system message to support CODEONLY response
 --                      1.2 (AWB, 17/08/2023) - Added natural query language support with the usp_ExecuteNaturalQuery stored procedure
+--                      1.3 (AWB, 23/08/2023) - Bugs fixes and support for Views
 --	
 -- 
 -- DISCLAIMER: 
@@ -64,7 +65,7 @@ You are a helpful database administrator and developer.
 Your responses should always be for Transact SQL (or T-SQL).  
 When asked to generate a database object, you should generate the T-SQL script required to do this.  
 All T-SQL scripts should be formatted in the same way including data types are capitalised, column names are enclosed in square brackets.  
-For scripts containing a CREATE statement, make sure the script includes a check to see if that object already exists.  
+When generating scripts containing a CREATE statement, make sure the script includes a check to see if that object already exists.  
 Only create the object if it doesn''t exist.  
 Scripts should only use dynamic SQL if required.  
 Try to avoid using sp_executesql.
@@ -386,8 +387,7 @@ BEGIN
 END;
 GO
 
--- Drop/Create Proc to generate a CREATE TABLE script based on the object name - this will include whether the column
--- is an identity column.  We need this CREATE TABLE script to help prompt ChatGPT for generating test data
+-- Proc for generating a CREATE TABLE script for both tables and views
 IF EXISTS (SELECT * FROM sys.objects WHERE type = 'P' AND OBJECT_ID = OBJECT_ID('dbo.usp_Generate_Create_Table_Sql'))
     DROP PROCEDURE [dbo].[usp_Generate_Create_Table_Sql];
 GO
@@ -408,20 +408,16 @@ BEGIN
 
 	SELECT @schema_name = PARSENAME(@object_name, 2), @table_name = PARSENAME(@object_name, 1);
 
+    -- Use INFORMATION_SCHEMA.COLUMNS since this provides support for both tables and views
 	SELECT @columns_sql = STRING_AGG(
-	  '[' + c.name + '] ' + 
-	  t.name + ' ' + 
-	  CASE WHEN c.is_nullable = 1 THEN 'NULL' ELSE 'NOT NULL' END +
-	  CASE WHEN c.is_identity = 1 THEN ' IDENTITY(1,1)' ELSE '' END
-	  ,',') 
-	FROM 
-		sys.tables AS t
-		INNER JOIN sys.columns AS c 
-			ON t.object_id = c.object_id
+	  '[' + COLUMN_NAME + '] ' + 
+	  UPPER(DATA_TYPE) + ISNULL('(' + IIF(CHARACTER_MAXIMUM_LENGTH = -1, 'MAX', CAST(CHARACTER_MAXIMUM_LENGTH AS VARCHAR(10))) + ')','') + ' ' + 
+	  CASE WHEN IS_NULLABLE = 'YES' THEN 'NULL' ELSE 'NOT NULL' END
+	  ,',') WITHIN GROUP (ORDER BY ORDINAL_POSITION ASC)
+	FROM INFORMATION_SCHEMA.COLUMNS
 	WHERE 
-		t.name = @table_name AND 
-		SCHEMA_NAME(t.schema_id) = @schema_name
-	GROUP BY t.object_id;
+		TABLE_NAME = @table_name AND 
+		TABLE_SCHEMA = @schema_name;
 
 	SET @create_table_sql = 'CREATE TABLE [' + @schema_name + '].[' + @table_name + '] (' + @columns_sql + ')';
 
@@ -639,30 +635,36 @@ BEGIN
 		DECLARE @request				NVARCHAR(MAX),
                 @response               NVARCHAR(MAX),
                 @full_table_list        NVARCHAR(MAX),
+                @selected_tables_list   NVARCHAR(MAX),
                 @table_name             NVARCHAR(512),
                 @create_table_sql       NVARCHAR(MAX);
 
-        -- Get comma separated list of ALL database schemas/tables
+        -- Get comma separated list of ALL database schemas/tables as well as Views
         SELECT @full_table_list = STRING_AGG(QUOTENAME(TABLE_SCHEMA) + '.' + QUOTENAME(TABLE_NAME),', ') 
-        FROM INFORMATION_SCHEMA.TABLES
-        WHERE TABLE_TYPE = 'BASE TABLE';
+        FROM INFORMATION_SCHEMA.TABLES;
 
         -- Formulate request for LLM
         SET @request = N'
-Here is a comma separated list of all the tables within a database:
-' + @full_table_list + '
-
-To answer the following question, "' + @query + '", which of those tables listed would you expect to need in a SQL query to answer the question.
-
-Your response should contain only the names of the tables requires in a single comma separated list.  The list should also include tables that might be helpful or useful in answering the response.
+You must answer the following question, "' + @query + '", using a T-SQL query.  
+The T-SQL query can only reference one or more of the following tables: ' + @full_table_list + '.
+From this comma separated list of tables, select those tables that might be useful in the generated T-SQL query.
+The selected tables should be returned in a comma separated list.  Your response should just contain the comma separated list of selected tables.
 '
+
         -- Get LLM response
-        EXEC [dbo].[usp_AskChatGPT] @request, @full_table_list OUTPUT, @print_response = 0, @debug = @debug;
+        EXEC [dbo].[usp_AskChatGPT] @request, @selected_tables_list OUTPUT, @print_response = 0, @debug = @debug;
 
         -- Now create a cursor for each of the tables returned in the list
+        -- Note the LLM may ignore our instruction to just return a list of tables, and may also use line separators
+        -- So we separate each item by comma, line feed and carriage return.
         SET @table_prompt = N'';
         DECLARE table_cursor CURSOR FOR
-        SELECT LTRIM(RTRIM([value])) FROM STRING_SPLIT(@full_table_list, ',');
+        SELECT LTRIM(RTRIM(v3.[value]))
+        FROM 
+            STRING_SPLIT(@selected_tables_list, CHAR(10)) v1
+            CROSS APPLY STRING_SPLIT(v1.[value], CHAR(13)) v2
+            CROSS APPLY STRING_SPLIT(v2.[value], ',') v3
+        WHERE LEN(LTRIM(RTRIM(v3.[value]))) > 0
 
         OPEN table_cursor;
         FETCH NEXT FROM table_cursor INTO @table_name;
@@ -670,9 +672,17 @@ Your response should contain only the names of the tables requires in a single c
         WHILE @@FETCH_STATUS = 0
         BEGIN
             -- Generate the Create table script and append to the prompt
-            EXEC dbo.usp_Generate_Create_Table_Sql @table_name, @create_table_sql OUTPUT;
-            SET @table_prompt = @table_prompt + @create_table_sql + CHAR(13) + CHAR(10);
-    
+            -- Ignore any items which are not valid tables, or we don't have permissions for
+            -- Note: we now also include VIEW objects, but also turn these into CREATE TABLE statements
+            BEGIN TRY
+                EXEC dbo.usp_Generate_Create_Table_Sql @table_name, @create_table_sql OUTPUT;
+                SET @table_prompt = @table_prompt + ISNULL(@create_table_sql,'') + CHAR(13) + CHAR(10);
+            END TRY
+            BEGIN CATCH
+                -- Ignore error
+                IF @debug = 1
+                    PRINT FORMAT(GETDATE(),'HH:mm:ss.ff') + ' - Error Occurred: ' + ERROR_MESSAGE()
+            END CATCH
             FETCH NEXT FROM table_cursor INTO @table_name;
         END
 
@@ -737,12 +747,13 @@ BEGIN
 CODEONLY
 A database contains the following tables and columns:
 ' + @create_table_prompt + '
-Generate a T-SQL query to answer the question: "' + @query + '" - the query should only reference table names and column names that appear in this request.
+Generate a T-SQL query to answer the question: "' + @query + '" - the query must only reference table names and column names that appear in this request.
 For example, if the request contains the following CREATE TABLE statements:
 CREATE TABLE Table1 (Column1 VARCHAR(255), Column2 VARCHAR(255))
 CREATE TABLE Table2 (Column3 VARCHAR(255), Column4 VARCHAR(255))
-Then you should only reference Tables Table1 and Table2 and the query should only reference columns Column1, Column2, Column3 and Column4
+Then you should only reference Tables Table1 and Table2 and the query should only reference columns Column1, Column2, Column3 and Column4.
 '
+
         -- Get ChatGPT response
         EXEC [dbo].[usp_AskChatGPT] @request, @sql OUTPUT, @print_response = 0, @debug = @debug;
 
